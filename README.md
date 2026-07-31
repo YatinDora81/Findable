@@ -1,159 +1,123 @@
-# Turborepo starter
+# Findable
 
-This Turborepo starter is maintained by the Turborepo core team.
+An AI knowledge inbox. Save a note or a link, it gets extracted, chunked, embedded and indexed, then you ask questions about it and get answers with citations back to the exact chunk they came from.
 
-## Using this example
+## Stack
 
-Run the following command:
+Turborepo · Bun · Express 5 · Prisma 7 / Postgres · Qdrant · Redis + BullMQ · Gemini
 
-```sh
-npx create-turbo@latest
+| Model | Used for |
+| --- | --- |
+| `gemini-embedding-2` | embeddings, 1536 dims (MRL truncated from 3072) |
+| `gemini-3.6-flash` | answer generation |
+| `gemini-3.5-flash-lite` | utility calls |
+
+## Layout
+
+```
+apps/
+  api/        Express 5 http api
+  worker/     BullMQ consumer running the ingest pipeline
+  web/        Next.js app
+packages/
+  config/     zod validated env + gemini key ring parsing
+  contracts/  zod request schemas, error codes, AppError
+  db/         Prisma schema and client
+  logger/     pino factory
+  queue/      BullMQ queue, job types, redis connection
+  rag/        chunking, embedding, vector store, extraction, retrieval, generation
 ```
 
-## What's inside?
+`packages/rag` has no http dependencies. Both the api (which embeds queries) and the worker (which embeds documents) import it.
 
-This Turborepo includes the following packages/apps:
+## Setup
 
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+```bash
+cp .env.example .env          # fill in DATABASE_URL, QDRANT_URL, GEMINI_API_KEYS
+docker compose up -d          # local redis + qdrant, skip if you use hosted ones
+bun install
+bun run db:migrate
+bun run db:seed
+bun run qdrant:init
+bun run dev
 ```
 
-Without global `turbo`, use your package manager:
+### Environment
 
-```sh
-cd my-turborepo
-npx turbo build
-bun dlx turbo build
-bun exec turbo build
+`GEMINI_API_KEYS` holds a rotating key ring. Each entry is `NAME__SPLIT__KEY`, entries separated by commas:
+
+```
+GEMINI_API_KEYS="alpha__SPLIT__AIza...,beta__SPLIT__AIza..."
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+The ring round robins across keys, backs a key off on 429 or 5xx, and permanently drops a key that answers 401 or 403 so one revoked key cannot fail the request. `GET /api/v1/health/ready` reports the live state of every key.
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+A missing or malformed variable crashes on boot with the offending field named, rather than throwing a 500 an hour later.
 
-```sh
-turbo build --filter=docs
+## API
+
+```
+POST   /api/v1/auth/guest              201  create a guest user and log in
+POST   /api/v1/auth/login              200  email + password
+GET    /api/v1/auth/me                 200
+POST   /api/v1/auth/logout             204
+
+POST   /api/v1/sources                 202  create and queue ingest
+GET    /api/v1/sources                 200  cursor paginated
+GET    /api/v1/sources/:id             200
+DELETE /api/v1/sources/:id             204
+POST   /api/v1/sources/:id/reindex     202
+
+POST   /api/v1/sources/:id/query       200  ask, returns citations
+GET    /api/v1/sources/:id/messages    200  history with citations
+
+GET    /api/v1/health                  200  liveness
+GET    /api/v1/health/ready            200  postgres + redis + qdrant + key ring
+
+POST   /api/v1/ingest    -> createSource
+GET    /api/v1/items     -> listSources
+POST   /api/v1/query     -> query, takes projectId in the body
 ```
 
-Without global `turbo`:
+Auth is a bearer token. `POST /api/v1/auth/guest` mints a user with a generated password and hands back both a session token and the credentials, so a visitor can start immediately and still sign back in later. Outside production a request with no token falls back to the seeded demo user; in production it is rejected.
 
-```sh
-npx turbo build --filter=docs
-bun exec turbo build --filter=docs
-bun exec turbo build --filter=docs
+Every failure uses the same envelope:
+
+```json
+{
+  "error": {
+    "code": "EXTRACTION_EMPTY",
+    "message": "Nothing readable found, the page may be paywalled",
+    "details": null,
+    "requestId": "01J8X..."
+  }
+}
 ```
 
-### Develop
+## How ingest works
 
-To develop all apps and packages, run the following command:
+1. Mark the source `PROCESSING`.
+2. Extract. A link goes through Readability then Turndown; a note is already markdown. This is the only step where `TEXT` and `LINK` differ.
+3. Guard. Link extractions must clear a length floor and look like prose, which rejects paywall stubs, base64 blobs and minified bundles. Notes skip this because the user typed them on purpose.
+4. Chunk. Markdown aware, splits on headings then paragraphs then sentences, 450 token target with 60 token overlap, and merges runts so a 20 token orphan does not become a vector that matches everything weakly.
+5. Wipe the previous attempt, Qdrant first then Postgres. Retry and reindex are the same code path, so both are idempotent.
+6. Insert chunks, embed them, upsert the vectors.
+7. Set `READY` last.
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+Step 7 is the important one. Retrieval filters on `indexStatus`, so a half indexed source is invisible instead of answering from a third of its chunks.
 
-```sh
-cd my-turborepo
-turbo dev
-```
+## Tradeoffs
 
-Without global `turbo`, use your package manager:
+**Chunking.** Recursive and markdown aware. Deterministic and pure, so it needs no model call. Semantic chunking and contextual retrieval score better but cost a model call per document or per chunk.
 
-```sh
-cd my-turborepo
-npx turbo dev
-bun exec turbo dev
-bun exec turbo dev
-```
+**Vector store.** Qdrant, one collection, `userId` as an `is_tenant` payload index with `m: 0` and `payload_m: 16` so each tenant gets its own HNSW subgraph rather than traversing a global one. Every query carries the tenant filter, which is what makes `m: 0` safe. At this scale pgvector is arguably the better call, one transaction and no dual write. Qdrant is a bet on growth and on keeping vector load off the OLTP primary.
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+**The main correctness risk.** Postgres and Qdrant share no transaction. Mitigated by making the worker the only writer, keying delete-then-upsert on `sourceId` so retries are idempotent, and setting `READY` only after the upsert lands. In production this wants a transactional outbox plus a sweep comparing `chunkCount` against `qdrant.count()`.
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+**What breaks at scale.** Dual write drift · no reranking, wants hybrid BM25 plus a cross encoder · embedding rate limits, wants the Batch API · one job per document blocks a worker on long content · polling `/sources` does not survive many tabs · `rawText` bloats Postgres backups.
 
-```sh
-turbo dev --filter=web
-```
+**Debuggability.** pino with a `requestId` carried from the http request into the BullMQ job. Every query logs the retrieval funnel: how many chunks came back, how many cleared the threshold, how many were cited, plus `topScore` and token counts. A vague answer at `topScore: 0.31` is a retrieval problem; the same answer at `0.82` is a prompt problem. Without the funnel you are guessing.
 
-Without global `turbo`:
+## Notes
 
-```sh
-npx turbo dev --filter=web
-bun exec turbo dev --filter=web
-bun exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-bun exec turbo login
-bun exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-bun exec turbo link
-bun exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+Redis needs `maxmemory-policy noeviction`. BullMQ stores job state in Redis, and an eviction policy like `volatile-lru` can silently drop jobs under memory pressure.

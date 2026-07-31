@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -10,4 +5,136 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum SourceKind {
+  TEXT
+  LINK
+}
+
+enum IndexStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+enum MessageState {
+  STREAMING
+  COMPLETE
+  FAILED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+
+  sources Source[]
+
+  @@map("users")
+}
+
+model Source {
+  id     String @id @default(cuid())
+  userId String
+
+  title       String
+  kind        SourceKind
+  indexStatus IndexStatus @default(PENDING)
+
+  url         String?
+  rawText     String  @db.Text
+  contentHash String
+
+  tokenCount     Int?
+  chunkCount     Int       @default(0)
+  embeddingModel String?
+  errorCode      String?
+  errorMessage   String?
+  indexedAt      DateTime?
+
+  metadata Json @default("{}")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastAskedAt DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks   Chunk[]
+  messages Message[]
+
+  @@unique([userId, contentHash])
+  @@index([userId, indexStatus, createdAt(sort: Desc)])
+  @@index([userId, lastAskedAt(sort: Desc)])
+  @@map("sources")
+}
+
+model Chunk {
+  id       String @id @default(uuid())
+  sourceId String
+
+  position    Int
+  text        String  @db.Text
+  tokenCount  Int
+  startOffset Int
+  endOffset   Int
+  headingPath String?
+
+  embeddedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  source    Source     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  citations Citation[]
+
+  @@unique([sourceId, position])
+  @@map("chunks")
+}
+
+model Message {
+  id       String       @id @default(cuid())
+  sourceId String
+  role     MessageRole
+  state    MessageState @default(COMPLETE)
+  content  String       @db.Text
+
+  model            String?
+  promptTokens     Int?
+  completionTokens Int?
+  retrievalMs      Int?
+  generationMs     Int?
+
+  createdAt DateTime @default(now())
+
+  source    Source     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  citations Citation[]
+
+  @@index([sourceId, createdAt])
+  @@map("messages")
+}
+
+model Citation {
+  id        String  @id @default(cuid())
+  messageId String
+  chunkId   String?
+
+  rank     Int
+  score    Float
+  wasCited Boolean @default(false)
+
+  snippet     String? @db.Text
+  headingPath String?
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  chunk   Chunk?  @relation(fields: [chunkId], references: [id], onDelete: SetNull)
+
+  @@unique([messageId, rank])
+  @@index([messageId, wasCited])
+  @@map("citations")
 }

@@ -22,7 +22,7 @@ export const routes: Router = Router();
 
 const guestLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 20,
+  max: 240,
   message: "Too many guest sessions from this address, try again later",
 });
 

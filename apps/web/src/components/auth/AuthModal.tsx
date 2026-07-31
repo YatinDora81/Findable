@@ -17,7 +17,7 @@ type Props = {
 
 export function AuthModal({ open, onClose }: Props) {
   const [mounted, setMounted] = useState(false);
-  const [mode, setMode] = useState<Mode>("signup");
+  const [mode, setMode] = useState<Mode>("signin");
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

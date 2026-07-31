@@ -9,6 +9,33 @@ type Props = {
   busy?: boolean;
 };
 
+const CAUSE: Record<string, string> = {
+  NOT_FOUND:
+    "The site answered with a 404. The page may have been moved or removed since the link was written.",
+  FORBIDDEN:
+    "The site refused the request. Some publishers block automated readers outright.",
+  BLOCKED_HOST:
+    "That address is not reachable from here. Private and internal addresses are blocked on purpose.",
+  EXTRACTION_EMPTY:
+    "The fetch succeeded but the extractor found no article body. Usually a paywall, a login wall, or a page that renders entirely in JavaScript.",
+  UNSUPPORTED_TYPE:
+    "That url is not an html page. Only html is readable for now, so pdfs and raw files are skipped.",
+  UNSUPPORTED_CONTENT:
+    "The page came back but it does not read like prose. Directory listings, raw data and minified bundles get rejected here.",
+  CONTENT_TOO_LARGE:
+    "The page is larger than the fetch limit, so it was dropped rather than read halfway.",
+  NO_CHUNKS: "There was not enough readable text to split into passages.",
+  UPSTREAM_TIMEOUT:
+    "The site took too long to respond. Trying again often clears it.",
+  UPSTREAM_ERROR:
+    "The site returned an error. Trying again often clears it.",
+  RATE_LIMITED:
+    "The site rate limited the fetch. Waiting a moment and retrying usually works.",
+};
+
+const FALLBACK =
+  "Something went wrong while indexing this source. Trying again is usually safe.";
+
 export function FailedPane({ code, message, onRetry, busy = false }: Props) {
   return (
     <div className="grid flex-1 place-items-center p-10">
@@ -20,8 +47,7 @@ export function FailedPane({ code, message, onRetry, busy = false }: Props) {
           {message ?? "That source could not be indexed"}
         </h3>
         <p className="mt-2.5 text-[13.5px] leading-[1.66] text-ink-3">
-          The fetch succeeded but the extractor found no article body. Usually a
-          paywall, a login wall, or a page that renders entirely in JavaScript.
+          {(code && CAUSE[code]) ?? FALLBACK}
         </p>
         <Button
           variant="primary"

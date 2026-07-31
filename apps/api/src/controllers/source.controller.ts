@@ -6,7 +6,7 @@ import {
   sourceIdSchema,
 } from "@repo/contracts";
 import { db } from "@repo/db";
-import { enqueueIngest } from "@repo/queue";
+import { enqueueIngest, isIngestPending } from "@repo/queue";
 import { deleteBySource } from "@repo/rag";
 import { canonicalizeUrl, normalizeText, sha256 } from "../lib/hash.ts";
 
@@ -138,7 +138,7 @@ export async function reindexSource(req: Request, res: Response): Promise<void> 
 
   if (!source) throw new AppError("NOT_FOUND", "Source not found");
 
-  if (source.indexStatus === "PROCESSING") {
+  if (source.indexStatus === "PROCESSING" && (await isIngestPending(id))) {
     throw new AppError("SOURCE_NOT_READY", "This source is already being indexed");
   }
 

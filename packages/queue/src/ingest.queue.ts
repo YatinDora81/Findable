@@ -67,6 +67,13 @@ export async function enqueueIngest(
   return "queued";
 }
 
+export async function isIngestPending(sourceId: string): Promise<boolean> {
+  const job = await ingestQueue.getJob(sourceId);
+  if (!job) return false;
+
+  return PENDING_STATES.has(await job.getState());
+}
+
 export async function closeQueue(): Promise<void> {
   await ingestQueue.close();
 }

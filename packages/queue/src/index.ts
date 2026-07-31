@@ -4,6 +4,7 @@ export {
   closeQueue,
   enqueueIngest,
   ingestQueue,
+  isIngestPending,
   INGEST_JOB_OPTIONS,
   INGEST_QUEUE,
   type EnqueueOutcome,

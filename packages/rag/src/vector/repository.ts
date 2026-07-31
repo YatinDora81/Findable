@@ -11,6 +11,7 @@ export type PointInput = {
   position: number;
   kind: string;
   text: string;
+  headingPath: string | null;
 };
 
 export type VectorHit = {
@@ -18,6 +19,7 @@ export type VectorHit = {
   score: number;
   text: string;
   position: number;
+  headingPath: string | null;
 };
 
 export async function upsertChunks(points: PointInput[]): Promise<void> {
@@ -33,6 +35,7 @@ export async function upsertChunks(points: PointInput[]): Promise<void> {
           position: point.position,
           kind: point.kind,
           text: point.text,
+          headingPath: point.headingPath,
         },
       })),
     });
@@ -91,6 +94,8 @@ export async function searchChunks(opts: {
       score: point.score,
       text: typeof payload.text === "string" ? payload.text : "",
       position: typeof payload.position === "number" ? payload.position : 0,
+      headingPath:
+        typeof payload.headingPath === "string" ? payload.headingPath : null,
     };
   });
 }

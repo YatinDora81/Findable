@@ -44,6 +44,11 @@ export const aliasQuerySchema = querySchema.extend({
   projectId: z.cuid("invalid projectId"),
 });
 
+export const loginSchema = z.object({
+  email: z.email(),
+  password: z.string().min(8).max(200),
+});
+
 export type CreateSourceInput = z.infer<typeof createSourceSchema>;
 export type ListSourcesInput = z.infer<typeof listSourcesSchema>;
 export type QueryInput = z.infer<typeof querySchema>;

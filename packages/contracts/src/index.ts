@@ -12,6 +12,7 @@ export {
   indexStatusSchema,
   listMessagesSchema,
   listSourcesSchema,
+  loginSchema,
   querySchema,
   sourceIdSchema,
   type CreateSourceInput,

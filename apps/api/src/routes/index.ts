@@ -1,5 +1,11 @@
 import { Router } from "express";
 import { aliasQuerySchema } from "@repo/contracts";
+import {
+  createGuest,
+  login,
+  logout,
+  me,
+} from "../controllers/auth.controller.ts";
 import { health, ready } from "../controllers/health.controller.ts";
 import { listMessages, query } from "../controllers/query.controller.ts";
 import {
@@ -9,11 +15,19 @@ import {
   listSources,
   reindexSource,
 } from "../controllers/source.controller.ts";
+import { authenticate } from "../middleware/auth.ts";
 
 export const routes: Router = Router();
 
 routes.get("/health", health);
 routes.get("/health/ready", ready);
+
+routes.post("/auth/guest", createGuest);
+routes.post("/auth/login", login);
+routes.get("/auth/me", authenticate, me);
+routes.post("/auth/logout", authenticate, logout);
+
+routes.use(authenticate);
 
 routes.post("/sources", createSource);
 routes.get("/sources", listSources);

@@ -34,6 +34,7 @@ const schema = z.object({
   UTILITY_MODEL: z.string().min(1).default("gemini-3.5-flash-lite"),
 
   PORT: z.coerce.number().int().positive().default(4000),
+  WORKER_PORT: z.coerce.number().int().positive().default(4001),
   WEB_ORIGIN: z.url().default("http://localhost:3000"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   NODE_ENV: z

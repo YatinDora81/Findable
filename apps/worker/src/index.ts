@@ -10,9 +10,12 @@ import {
   type IngestJobResult,
   type IngestJobName,
 } from "@repo/queue";
+import { startHealthServer } from "./health-server.ts";
 import { processIngest } from "./processors/ingest.processor.ts";
 
 const log = createLogger("worker");
+
+const healthServer = startHealthServer();
 
 const worker = new Worker<IngestJobData, IngestJobResult, IngestJobName>(
   INGEST_QUEUE,
@@ -48,6 +51,7 @@ async function shutdown(signal: string): Promise<void> {
 
   log.info({ signal }, "worker.shutdown");
 
+  await healthServer.stop(true);
   await worker.close();
   await closeConnection();
   await db.$disconnect();

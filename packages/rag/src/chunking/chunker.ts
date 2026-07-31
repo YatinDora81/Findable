@@ -131,7 +131,9 @@ function explode(text: string, offset: number, max: number): Unit[] {
   const tokens = tok(text);
   if (tokens <= max) return [{ text, offset, tokens }];
 
-  const parts = /[.!?]\s/.test(text) ? splitSentences(text) : hardSplit(text, max);
+  const parts = /[.!?。！？；]/.test(text)
+    ? splitSentences(text)
+    : hardSplit(text, max);
 
   if (parts.length === 1) {
     let cursor = offset;
@@ -150,12 +152,29 @@ function explode(text: string, offset: number, max: number): Unit[] {
   });
 }
 
-const splitSentences = (text: string): string[] => text.split(/(?<=[.!?])\s+/);
+const splitSentences = (text: string): string[] =>
+  text.split(/(?<=[.!?。！？；])\s*/).filter((part) => part.length > 0);
 
 function hardSplit(text: string, maxTokens: number): string[] {
-  const size = maxTokens * 4;
   const out: string[] = [];
-  for (let i = 0; i < text.length; i += size) out.push(text.slice(i, i + size));
+  let rest = text;
+
+  while (rest.length > 0) {
+    if (tok(rest) <= maxTokens) {
+      out.push(rest);
+      break;
+    }
+
+    let size = Math.max(1, Math.floor((rest.length * maxTokens) / tok(rest)));
+
+    while (size > 1 && tok(rest.slice(0, size)) > maxTokens) {
+      size = Math.floor(size * 0.8);
+    }
+
+    out.push(rest.slice(0, size));
+    rest = rest.slice(size);
+  }
+
   return out.length > 0 ? out : [text];
 }
 
@@ -224,9 +243,21 @@ function mergeRunts(chunks: Chunk[], min: number): Chunk[] {
 const sum = (values: number[]): number =>
   values.reduce((total, value) => total + value, 0);
 
+const UNSPACED_SCRIPTS =
+  /[぀-ヿ㐀-䶿一-鿿豈-﫿฀-๿가-힯]/g;
+
 export function looksLikeProse(text: string): boolean {
   const sample = text.slice(0, 2000);
   if (sample.length === 0) return false;
+
+  const letters = (sample.match(/\p{L}/gu) ?? []).length;
+  if (letters / sample.length < 0.5) return false;
+
+  const unspaced = (sample.match(UNSPACED_SCRIPTS) ?? []).length;
+
+  if (unspaced / sample.length > 0.2) {
+    return (sample.match(/[。！？、，．]/g) ?? []).length >= 3 || unspaced > 200;
+  }
 
   const sentenceEnds = (sample.match(/[.!?]\s/g) ?? []).length;
   const spaceRatio = (sample.match(/\s/g) ?? []).length / sample.length;

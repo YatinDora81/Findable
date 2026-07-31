@@ -16,14 +16,27 @@ import {
   reindexSource,
 } from "../controllers/source.controller.ts";
 import { authenticate } from "../middleware/auth.ts";
+import { rateLimit } from "../middleware/rate-limit.ts";
 
 export const routes: Router = Router();
+
+const guestLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  message: "Too many guest sessions from this address, try again later",
+});
+
+const loginLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: "Too many sign in attempts, try again later",
+});
 
 routes.get("/health", health);
 routes.get("/health/ready", ready);
 
-routes.post("/auth/guest", createGuest);
-routes.post("/auth/login", login);
+routes.post("/auth/guest", guestLimit, createGuest);
+routes.post("/auth/login", loginLimit, login);
 routes.get("/auth/me", authenticate, me);
 routes.post("/auth/logout", authenticate, logout);
 

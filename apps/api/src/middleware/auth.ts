@@ -1,10 +1,7 @@
 import type { RequestHandler } from "express";
-import { env } from "@repo/config";
 import { AppError } from "@repo/contracts";
 import { db } from "@repo/db";
 import { readBearerToken, resolveSession } from "../lib/auth.ts";
-
-const DEMO_USER_ID = "usr_demo";
 
 const TOUCH_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -12,18 +9,12 @@ export const authenticate: RequestHandler = (req, _res, next) => {
   const token = readBearerToken(req.headers.authorization);
 
   if (!token) {
-    if (env.NODE_ENV === "production") {
-      next(
-        new AppError(
-          "FORBIDDEN",
-          "Missing bearer token, start a guest session at /api/v1/auth/guest",
-        ),
-      );
-      return;
-    }
-
-    req.userId = DEMO_USER_ID;
-    next();
+    next(
+      new AppError(
+        "FORBIDDEN",
+        "Missing bearer token, start a guest session at /api/v1/auth/guest",
+      ),
+    );
     return;
   }
 

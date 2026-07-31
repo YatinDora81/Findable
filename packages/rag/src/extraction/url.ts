@@ -118,11 +118,45 @@ function parseIp(value: string): ipaddr.IPv4 | ipaddr.IPv6 | null {
 function isBlocked(address: ipaddr.IPv4 | ipaddr.IPv6): boolean {
   if (address.kind() === "ipv6") {
     const v6 = address as ipaddr.IPv6;
+
     if (v6.isIPv4MappedAddress()) return isBlocked(v6.toIPv4Address());
+
+    const embedded = embeddedIPv4(v6);
+    if (embedded && isBlocked(embedded)) return true;
   }
 
   return BLOCKED_RANGES.includes(address.range());
 }
+
+function embeddedIPv4(address: ipaddr.IPv6): ipaddr.IPv4 | null {
+  const parts = address.parts;
+  const [first, second, third] = parts;
+
+  if (first === undefined || second === undefined || third === undefined) {
+    return null;
+  }
+
+  if (first === 0x2002) {
+    return toIPv4(second, third);
+  }
+
+  if (first === 0x0064 && second === 0xff9b) {
+    const [seventh, eighth] = [parts[6], parts[7]];
+    if (seventh === undefined || eighth === undefined) return null;
+    return toIPv4(seventh, eighth);
+  }
+
+  if (first === 0x2001 && second === 0x0000) {
+    const [seventh, eighth] = [parts[6], parts[7]];
+    if (seventh === undefined || eighth === undefined) return null;
+    return toIPv4(seventh ^ 0xffff, eighth ^ 0xffff);
+  }
+
+  return null;
+}
+
+const toIPv4 = (high: number, low: number): ipaddr.IPv4 =>
+  new ipaddr.IPv4([high >> 8, high & 0xff, low >> 8, low & 0xff]);
 
 async function fetchFollowingSafeRedirects(
   url: string,

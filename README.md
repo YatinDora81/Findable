@@ -73,6 +73,13 @@ GET    /api/v1/sources/:id/messages    200  history with citations
 
 GET    /api/v1/health                  200  liveness
 GET    /api/v1/health/ready            200  postgres + redis + qdrant + key ring
+```
+
+The worker runs its own tiny http server on `WORKER_PORT` for the same reason:
+
+```
+GET    /health                         200  liveness
+GET    /health/ready                   200  redis + postgres + queue depth
 
 POST   /api/v1/ingest    -> createSource
 GET    /api/v1/items     -> listSources
@@ -117,6 +124,17 @@ Step 7 is the important one. Retrieval filters on `indexStatus`, so a half index
 **What breaks at scale.** Dual write drift · no reranking, wants hybrid BM25 plus a cross encoder · embedding rate limits, wants the Batch API · one job per document blocks a worker on long content · polling `/sources` does not survive many tabs · `rawText` bloats Postgres backups.
 
 **Debuggability.** pino with a `requestId` carried from the http request into the BullMQ job. Every query logs the retrieval funnel: how many chunks came back, how many cleared the threshold, how many were cited, plus `topScore` and token counts. A vague answer at `topScore: 0.31` is a retrieval problem; the same answer at `0.82` is a prompt problem. Without the funnel you are guessing.
+
+## Frontend
+
+`apps/web` is a Next.js 15 App Router client. Editorial archive look: warm paper rather than white, hairline rules instead of shadows, one sienna accent, and mono reserved for data.
+
+The part worth knowing about is the citation tie. An answer comes back as prose containing `[1]` markers plus a parallel `citations[]` array. `AnswerBody` walks the rendered markdown and swaps each marker for a button that shares hover state with its source card, so hovering a marker lights its card and hovering a card lights every claim it backs. Keyboard focus drives the same highlight.
+
+Two other details that matter more than they look:
+
+- The source list poll returns `false` from `refetchInterval` once nothing is `PENDING` or `PROCESSING`, so an idle tab stops hitting the API instead of polling forever.
+- Every page pings `/health` on the api and the worker every five seconds. On hosts that idle a service to sleep this keeps both awake while somebody is actually using the site.
 
 ## Notes
 

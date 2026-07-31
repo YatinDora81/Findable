@@ -50,7 +50,7 @@ export async function me(req: Request, res: Response): Promise<void> {
 
 export async function logout(req: Request, res: Response): Promise<void> {
   if (req.sessionId) {
-    await db.session.delete({ where: { id: req.sessionId } }).catch(() => {});
+    await db.session.deleteMany({ where: { id: req.sessionId } });
     req.log.info({ userId: req.userId }, "auth.logout");
   }
 

@@ -31,22 +31,24 @@ export async function query(req: Request, res: Response): Promise<void> {
     throw new AppError("SOURCE_NOT_READY", "This source is still being indexed");
   }
 
-  await db.message.create({
-    data: { sourceId, role: "USER", content: question },
-  });
-
   const retrievalStartedAt = Date.now();
   const hits = await retrieve({ userId, sourceId, question, topK });
   const retrievalMs = Date.now() - retrievalStartedAt;
 
   if (hits.length === 0) {
-    const message = await db.message.create({
-      data: {
-        sourceId,
-        role: "ASSISTANT",
-        retrievalMs,
-        content: "I couldn't find anything in this source that answers that.",
-      },
+    const message = await db.$transaction(async (tx) => {
+      await tx.message.create({
+        data: { sourceId, role: "USER", content: question },
+      });
+
+      return tx.message.create({
+        data: {
+          sourceId,
+          role: "ASSISTANT",
+          retrievalMs,
+          content: "I couldn't find anything in this source that answers that.",
+        },
+      });
     });
 
     req.log.info(
@@ -71,7 +73,18 @@ export async function query(req: Request, res: Response): Promise<void> {
 
   const cited = new Set(result.used);
 
+  const liveChunks = await db.chunk.findMany({
+    where: { id: { in: hits.map((hit) => hit.chunkId) } },
+    select: { id: true },
+  });
+
+  const live = new Set(liveChunks.map((chunk) => chunk.id));
+
   const message = await db.$transaction(async (tx) => {
+    await tx.message.create({
+      data: { sourceId, role: "USER", content: question },
+    });
+
     const created = await tx.message.create({
       data: {
         sourceId,
@@ -93,7 +106,7 @@ export async function query(req: Request, res: Response): Promise<void> {
         return {
           messageId: created.id,
           rank,
-          chunkId: hit.chunkId,
+          chunkId: live.has(hit.chunkId) ? hit.chunkId : null,
           score: hit.score,
           wasCited,
           headingPath: hit.headingPath,

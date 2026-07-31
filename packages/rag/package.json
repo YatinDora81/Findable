@@ -1,0 +1,33 @@
+{
+  "name": "@repo/rag",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "qdrant:init": "bun --env-file=../../.env scripts/init-collection.ts",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "^2.15.0",
+    "@mozilla/readability": "^0.6.0",
+    "@qdrant/js-client-rest": "^1.18.0",
+    "@repo/config": "*",
+    "@repo/contracts": "*",
+    "@repo/logger": "*",
+    "ipaddr.js": "^2.4.0",
+    "js-tiktoken": "^1.0.21",
+    "jsdom": "^30.0.1",
+    "p-limit": "^7.3.1",
+    "turndown": "^7.2.4"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "*",
+    "@types/bun": "latest",
+    "@types/jsdom": "^28.0.3",
+    "@types/turndown": "^5.0.6",
+    "typescript": "5.9.2"
+  }
+}

@@ -26,9 +26,15 @@ export async function processIngest(
   const jobLog = log.child({ requestId, sourceId, jobId: job.id });
   const startedAt = Date.now();
 
-  const source = await db.source.findUniqueOrThrow({ where: { id: sourceId } });
-
   try {
+    const source = await db.source.findUnique({ where: { id: sourceId } });
+
+    if (!source) {
+      jobLog.warn("ingest.source_missing");
+      await deleteBySource(sourceId).catch(() => {});
+      return { chunkCount: 0 };
+    }
+
     await db.source.update({
       where: { id: sourceId },
       data: { indexStatus: "PROCESSING", errorCode: null, errorMessage: null },
@@ -86,6 +92,7 @@ export async function processIngest(
         position: row.position,
         kind: source.kind,
         text: row.text,
+        headingPath: row.headingPath,
       })),
     );
 
@@ -125,7 +132,13 @@ export async function processIngest(
     jobLog.error({ err: error, attempt: attemptNumber, fatal }, "ingest.failed");
 
     if (isFinalAttempt || fatal) {
-      await markFailed(sourceId, error);
+      const marked = await markFailed(sourceId, error);
+
+      if (!marked) {
+        jobLog.error("ingest.mark_failed_failed");
+        throw error;
+      }
+
       if (fatal) return { chunkCount: 0 };
     }
 
@@ -149,12 +162,12 @@ function assertReadable(markdown: string): void {
   }
 }
 
-async function markFailed(sourceId: string, error: unknown): Promise<void> {
+async function markFailed(sourceId: string, error: unknown): Promise<boolean> {
   await deleteBySource(sourceId).catch(() => {});
   await db.chunk.deleteMany({ where: { sourceId } }).catch(() => {});
 
-  await db.source
-    .update({
+  try {
+    await db.source.update({
       where: { id: sourceId },
       data: {
         indexStatus: "FAILED",
@@ -164,6 +177,9 @@ async function markFailed(sourceId: string, error: unknown): Promise<void> {
           ? error.publicMessage
           : "Something went wrong while indexing",
       },
-    })
-    .catch(() => {});
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }

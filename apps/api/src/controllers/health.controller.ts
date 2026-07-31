@@ -10,7 +10,7 @@ export function health(_req: Request, res: Response): void {
 export async function ready(req: Request, res: Response): Promise<void> {
   const [postgres, redis, qdrant] = await Promise.all([
     check("postgres", req, () => db.$queryRaw`select 1`),
-    check("redis", req, () => pingRedis()),
+    pingRedis(),
     check("qdrant", req, async () => {
       const exists = await collectionReady();
       if (!exists) throw new Error("collection missing");

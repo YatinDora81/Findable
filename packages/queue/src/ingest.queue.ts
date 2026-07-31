@@ -1,7 +1,10 @@
 import { Queue, type JobsOptions } from "bullmq";
-import { connection } from "./connection.ts";
+import { connection, withRedisTimeout } from "./connection.ts";
 
 export const INGEST_QUEUE = "ingest";
+
+const ENQUEUE_TIMEOUT_MS = 5_000;
+const COUNTS_TIMEOUT_MS = 2_000;
 
 export type IngestJobData = {
   sourceId: string;
@@ -44,34 +47,52 @@ export const ingestQueue = new Queue<
 
 ingestQueue.on("error", () => {});
 
-export async function enqueueIngest(
+export function enqueueIngest(
   data: IngestJobData,
 ): Promise<EnqueueOutcome> {
-  const existing = await ingestQueue.getJob(data.sourceId);
+  return withRedisTimeout("enqueue", ENQUEUE_TIMEOUT_MS, async () => {
+    const existing = await ingestQueue.getJob(data.sourceId);
 
-  if (existing) {
-    const state = await existing.getState();
+    if (existing) {
+      const state = await existing.getState();
 
-    if (PENDING_STATES.has(state)) return "already-queued";
+      if (PENDING_STATES.has(state)) return "already-queued";
 
-    const removed = await existing
-      .remove()
-      .then(() => true)
-      .catch(() => false);
+      const removed = await existing
+        .remove()
+        .then(() => true)
+        .catch(() => false);
 
-    if (!removed) return "already-queued";
+      if (!removed) return "already-queued";
+    }
+
+    await ingestQueue.add("ingest", data, { jobId: data.sourceId });
+
+    return "queued";
+  });
+}
+
+export async function ingestJobCounts(): Promise<Record<string, number> | null> {
+  try {
+    return await withRedisTimeout("job counts", COUNTS_TIMEOUT_MS, () =>
+      ingestQueue.getJobCounts("active", "waiting", "delayed", "failed"),
+    );
+  } catch {
+    return null;
   }
-
-  await ingestQueue.add("ingest", data, { jobId: data.sourceId });
-
-  return "queued";
 }
 
 export async function isIngestPending(sourceId: string): Promise<boolean> {
-  const job = await ingestQueue.getJob(sourceId);
-  if (!job) return false;
+  try {
+    return await withRedisTimeout("job lookup", COUNTS_TIMEOUT_MS, async () => {
+      const job = await ingestQueue.getJob(sourceId);
+      if (!job) return false;
 
-  return PENDING_STATES.has(await job.getState());
+      return PENDING_STATES.has(await job.getState());
+    });
+  } catch {
+    return false;
+  }
 }
 
 export async function closeQueue(): Promise<void> {

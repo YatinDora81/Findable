@@ -1,8 +1,15 @@
-export { connection, closeConnection, pingRedis } from "./connection.ts";
+export {
+  connection,
+  closeConnection,
+  pingRedis,
+  withRedisTimeout,
+  RedisTimeoutError,
+} from "./connection.ts";
 
 export {
   closeQueue,
   enqueueIngest,
+  ingestJobCounts,
   ingestQueue,
   isIngestPending,
   INGEST_JOB_OPTIONS,

@@ -1,7 +1,7 @@
 import { env } from "@repo/config";
 import { db } from "@repo/db";
 import { createLogger } from "@repo/logger";
-import { ingestQueue, pingRedis } from "@repo/queue";
+import { ingestJobCounts, pingRedis } from "@repo/queue";
 
 const log = createLogger("worker-health");
 
@@ -34,9 +34,9 @@ export function startHealthServer() {
 
       if (pathname === "/health/ready") {
         const [redis, postgres, counts] = await Promise.all([
-          probe(() => pingRedis()),
+          pingRedis(),
           probe(() => db.$queryRaw`select 1`),
-          ingestQueue.getJobCounts("active", "waiting", "delayed", "failed").catch(() => null),
+          ingestJobCounts(),
         ]);
 
         const healthy = redis && postgres;

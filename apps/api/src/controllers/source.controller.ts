@@ -60,11 +60,24 @@ export async function createSource(req: Request, res: Response): Promise<void> {
     },
   });
 
-  const outcome = await enqueueIngest({
-    sourceId: source.id,
-    userId,
-    requestId: req.id,
-  });
+  let outcome: string;
+
+  try {
+    outcome = await enqueueIngest({
+      sourceId: source.id,
+      userId,
+      requestId: req.id,
+    });
+  } catch (error) {
+    req.log.error({ err: error, sourceId: source.id }, "ingest.enqueue_failed");
+    await markUnqueued(source.id);
+
+    throw new AppError(
+      "SERVICE_UNAVAILABLE",
+      "Saved, but the indexing queue is unreachable right now. Retry it in a moment.",
+      { id: source.id },
+    );
+  }
 
   req.log.info(
     { sourceId: source.id, kind: source.kind, outcome },
@@ -72,6 +85,19 @@ export async function createSource(req: Request, res: Response): Promise<void> {
   );
 
   res.status(202).json({ data: source });
+}
+
+async function markUnqueued(id: string): Promise<void> {
+  await db.source
+    .update({
+      where: { id },
+      data: {
+        indexStatus: "FAILED",
+        errorCode: "SERVICE_UNAVAILABLE",
+        errorMessage: "The indexing queue was unreachable, try again",
+      },
+    })
+    .catch(() => {});
 }
 
 export async function listSources(req: Request, res: Response): Promise<void> {
@@ -142,11 +168,21 @@ export async function reindexSource(req: Request, res: Response): Promise<void> 
     throw new AppError("SOURCE_NOT_READY", "This source is already being indexed");
   }
 
-  const outcome = await enqueueIngest({
-    sourceId: id,
-    userId: req.userId,
-    requestId: req.id,
-  });
+  let outcome: string;
+
+  try {
+    outcome = await enqueueIngest({
+      sourceId: id,
+      userId: req.userId,
+      requestId: req.id,
+    });
+  } catch (error) {
+    req.log.error({ err: error, sourceId: id }, "reindex.enqueue_failed");
+    throw new AppError(
+      "SERVICE_UNAVAILABLE",
+      "The indexing queue is unreachable right now, try again in a moment",
+    );
+  }
 
   if (outcome === "already-queued") {
     throw new AppError("SOURCE_NOT_READY", "This source is already queued");

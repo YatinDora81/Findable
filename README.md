@@ -33,14 +33,17 @@ packages/
 ## Setup
 
 ```bash
-cp .env.example .env          # fill in DATABASE_URL, QDRANT_URL, GEMINI_API_KEYS
+cp .env.example .env          # fill in DATABASE_URL, QDRANT_URL, QDRANT_API_KEY, GEMINI_API_KEYS
 docker compose up -d          # local redis + qdrant, skip if you use hosted ones
 bun install
-bun run db:migrate
+bun run db:generate           # the generated Prisma client is gitignored
+bun run db:deploy             # or db:migrate if you are changing the schema
 bun run db:seed
 bun run qdrant:init
 bun run dev
 ```
+
+`db:generate` is the step a fresh clone forgets. `packages/db/generated/` is gitignored, so nothing typechecks or boots until it has run once. `check-types` and `build` both depend on it in `turbo.json`, so those two commands pull it in automatically — but running the api or worker directly does not.
 
 ### Environment
 
@@ -73,20 +76,20 @@ GET    /api/v1/sources/:id/messages    200  history with citations
 
 GET    /api/v1/health                  200  liveness
 GET    /api/v1/health/ready            200  postgres + redis + qdrant + key ring
-```
-
-The worker runs its own tiny http server on `WORKER_PORT` for the same reason:
-
-```
-GET    /health                         200  liveness
-GET    /health/ready                   200  redis + postgres + queue depth
 
 POST   /api/v1/ingest    -> createSource
 GET    /api/v1/items     -> listSources
 POST   /api/v1/query     -> query, takes projectId in the body
 ```
 
-Auth is a bearer token. `POST /api/v1/auth/guest` mints a user with a generated password and hands back both a session token and the credentials, so a visitor can start immediately and still sign back in later. Outside production a request with no token falls back to the seeded demo user; in production it is rejected.
+The worker runs its own tiny http server on `WORKER_PORT`, so a process manager can tell whether the consumer is alive without going through the api:
+
+```
+GET    /health                         200  liveness
+GET    /health/ready                   200  redis + postgres + queue depth
+```
+
+Auth is a bearer token on every route except `/health*`, `/auth/guest` and `/auth/login`. `POST /api/v1/auth/guest` mints a user with a generated password and hands back both a session token and the credentials, so a visitor can start immediately and still sign back in later. A request with no token is rejected with 403 — there is no anonymous fallback tenant.
 
 Every failure uses the same envelope:
 

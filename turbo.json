@@ -31,7 +31,8 @@
   "tasks": {
     "build": {
       "dependsOn": [
-        "^build"
+        "^build",
+        "@repo/db#generate"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -50,7 +51,8 @@
     },
     "check-types": {
       "dependsOn": [
-        "^check-types"
+        "^check-types",
+        "@repo/db#generate"
       ]
     },
     "dev": {
@@ -58,7 +60,10 @@
       "persistent": true
     },
     "generate": {
-      "cache": false
+      "cache": false,
+      "outputs": [
+        "generated/**"
+      ]
     },
     "migrate": {
       "cache": false,

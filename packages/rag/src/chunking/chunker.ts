@@ -70,9 +70,18 @@ function splitByHeadings(markdown: string): Section[] {
   let cursor = 0;
   let buf = "";
   let start = 0;
+  let fence: string | null = null;
 
   for (const line of markdown.split("\n")) {
-    const heading = line.match(/^(#{1,4})\s+(.*)/);
+    const fenceMark = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+
+    if (fenceMark) {
+      const mark = fenceMark[1] ?? "";
+      if (fence === null) fence = mark[0] ?? null;
+      else if (mark[0] === fence) fence = null;
+    }
+
+    const heading = fence === null ? line.match(/^(#{1,4})\s+(.*)/) : null;
 
     if (heading) {
       const hashes = heading[1] ?? "";

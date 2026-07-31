@@ -110,8 +110,12 @@ export async function callGemini<T>(
 
     try {
       const result = await operation(slot.client);
-      slot.failures = 0;
-      slot.availableAt = 0;
+
+      if (slot.availableAt <= Date.now()) {
+        slot.failures = 0;
+        slot.availableAt = 0;
+      }
+
       return result;
     } catch (error) {
       const failure = inspectFailure(error);

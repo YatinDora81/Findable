@@ -9,31 +9,37 @@ export function health(_req: Request, res: Response): void {
 
 export async function ready(req: Request, res: Response): Promise<void> {
   const [postgres, redis, qdrant] = await Promise.all([
-    check(() => db.$queryRaw`select 1`),
-    check(() => pingRedis()),
-    check(async () => {
+    check("postgres", req, () => db.$queryRaw`select 1`),
+    check("redis", req, () => pingRedis()),
+    check("qdrant", req, async () => {
       const exists = await collectionReady();
       if (!exists) throw new Error("collection missing");
     }),
   ]);
 
+  const keys = keyRingStatus();
   const checks = { postgres, redis, qdrant };
-  const healthy = Object.values(checks).every((entry) => entry.ok);
-
-  if (!healthy) req.log.warn({ checks }, "health.degraded");
+  const healthy = postgres && redis && qdrant;
 
   res.status(healthy ? 200 : 503).json({
-    data: { status: healthy ? "ok" : "degraded", checks, keys: keyRingStatus() },
+    data: {
+      status: healthy ? "ok" : "degraded",
+      checks,
+      keys: { total: keys.length, usable: keys.filter((k) => !k.disabled).length },
+    },
   });
 }
 
-type CheckResult = { ok: boolean; error?: string };
-
-async function check(probe: () => Promise<unknown>): Promise<CheckResult> {
+async function check(
+  name: string,
+  req: Request,
+  probe: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await probe();
-    return { ok: true };
+    return true;
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "failed" };
+    req.log.warn({ err: error, dependency: name }, "health.dependency_down");
+    return false;
   }
 }

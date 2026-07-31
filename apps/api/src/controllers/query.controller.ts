@@ -96,6 +96,7 @@ export async function query(req: Request, res: Response): Promise<void> {
           chunkId: hit.chunkId,
           score: hit.score,
           wasCited,
+          headingPath: hit.headingPath,
           snippet: wasCited ? hit.text.slice(0, SNIPPET_LENGTH) : null,
         };
       }),
@@ -134,6 +135,7 @@ export async function query(req: Request, res: Response): Promise<void> {
           rank,
           chunkId: hit?.chunkId ?? null,
           score: hit?.score ?? 0,
+          headingPath: hit?.headingPath ?? null,
           snippet: hit?.text.slice(0, SNIPPET_LENGTH) ?? "",
         };
       }),
@@ -156,7 +158,7 @@ export async function listMessages(req: Request, res: Response): Promise<void> {
 
   const messages = await db.message.findMany({
     where: { sourceId },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit,
     include: {
       citations: {
@@ -166,5 +168,5 @@ export async function listMessages(req: Request, res: Response): Promise<void> {
     },
   });
 
-  res.json({ data: messages });
+  res.json({ data: messages.reverse() });
 }

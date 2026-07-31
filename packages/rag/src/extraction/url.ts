@@ -6,6 +6,10 @@ import TurndownService from "turndown";
 import { env } from "@repo/config";
 import { AppError } from "@repo/contracts";
 
+const MAX_REDIRECTS = 5;
+
+const REDIRECT_CODES = new Set([301, 302, 303, 307, 308]);
+
 const BLOCKED_RANGES = [
   "private",
   "loopback",
@@ -31,15 +35,7 @@ export type ExtractedDocument = {
 };
 
 export async function extractFromUrl(url: string): Promise<ExtractedDocument> {
-  const parsed = new URL(url);
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new AppError("BLOCKED_HOST", "Only http and https urls are supported");
-  }
-
-  await assertPublicHost(parsed.hostname);
-
-  const response = await fetchWithTimeout(url);
+  const { response, finalUrl } = await fetchFollowingSafeRedirects(url);
 
   if (response.status === 404) throw new AppError("NOT_FOUND", "Page not found");
   if (response.status === 403)
@@ -58,12 +54,7 @@ export async function extractFromUrl(url: string): Promise<ExtractedDocument> {
     );
   }
 
-  const finalUrl = response.url || url;
-
-  if (finalUrl !== url) {
-    await assertPublicHost(new URL(finalUrl).hostname);
-  }
-
+  const parsed = new URL(finalUrl);
   const html = await readCapped(response, env.MAX_CONTENT_BYTES);
   const dom = new JSDOM(html, { url: finalUrl });
   const article = new Readability(dom.window.document).parse();
@@ -133,11 +124,51 @@ function isBlocked(address: ipaddr.IPv4 | ipaddr.IPv6): boolean {
   return BLOCKED_RANGES.includes(address.range());
 }
 
-async function fetchWithTimeout(url: string): Promise<Response> {
+async function fetchFollowingSafeRedirects(
+  url: string,
+): Promise<{ response: Response; finalUrl: string }> {
+  const deadline = AbortSignal.timeout(env.FETCH_TIMEOUT_MS);
+  let target = url;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const parsed = new URL(target);
+
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new AppError(
+        "BLOCKED_HOST",
+        "Only http and https urls are supported",
+      );
+    }
+
+    await assertPublicHost(parsed.hostname);
+
+    const response = await fetchOnce(target, deadline);
+
+    if (!REDIRECT_CODES.has(response.status)) {
+      return { response, finalUrl: target };
+    }
+
+    const location = response.headers.get("location");
+    await response.body?.cancel().catch(() => {});
+
+    if (!location) {
+      throw new AppError("UPSTREAM_ERROR", "The site sent an empty redirect");
+    }
+
+    target = new URL(location, target).toString();
+  }
+
+  throw new AppError("UPSTREAM_ERROR", "The site redirected too many times");
+}
+
+async function fetchOnce(
+  url: string,
+  signal: AbortSignal,
+): Promise<Response> {
   try {
     return await fetch(url, {
-      signal: AbortSignal.timeout(env.FETCH_TIMEOUT_MS),
-      redirect: "follow",
+      signal,
+      redirect: "manual",
       headers: {
         "User-Agent": "FindableBot/1.0 (+https://findable.local/bot)",
         Accept: "text/html,application/xhtml+xml",

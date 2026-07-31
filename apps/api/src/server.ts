@@ -12,10 +12,10 @@ export function createServer(): Express {
   app.disable("x-powered-by");
   app.use(helmet());
   app.use(cors({ origin: env.WEB_ORIGIN, exposedHeaders: ["X-Request-Id"] }));
-  app.use(express.json({ limit: "1mb" }));
-
   app.use(context);
   app.use(accessLog);
+
+  app.use(express.json({ limit: "1mb" }));
 
   app.use("/api/v1", routes);
 

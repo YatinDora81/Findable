@@ -91,6 +91,8 @@ GET    /api/v1/sources/:id/messages    200  history with citations
 
 GET    /api/v1/health                  200  liveness
 GET    /api/v1/health/ready            200  postgres + redis + qdrant + key ring
+GET    /health                         200  same two, unprefixed, for platform probes
+GET    /health/ready                   200
 
 POST   /api/v1/ingest    -> createSource
 GET    /api/v1/items     -> listSources

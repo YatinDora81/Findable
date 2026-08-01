@@ -4,6 +4,7 @@ import helmet from "helmet";
 import { env } from "@repo/config";
 import { accessLog, context } from "./middleware/context.ts";
 import { errorHandler, notFound } from "./middleware/error-handler.ts";
+import { health, ready } from "./controllers/health.controller.ts";
 import { routes } from "./routes/index.ts";
 
 export function createServer(): Express {
@@ -16,6 +17,9 @@ export function createServer(): Express {
   app.use(accessLog);
 
   app.use(express.json({ limit: "1mb" }));
+
+  app.get("/health", health);
+  app.get("/health/ready", ready);
 
   app.use("/api/v1", routes);
 

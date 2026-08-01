@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { env } from "@repo/config";
 import { db } from "@repo/db";
 import { createLogger } from "@repo/logger";
@@ -39,13 +40,13 @@ export function startHealthServer() {
           ingestJobCounts(),
         ]);
 
-        const healthy = redis && postgres;
+        const healthy = redis && postgres && counts !== null;
 
         return json(
           {
             data: {
               status: healthy ? "ok" : "degraded",
-              checks: { redis, postgres },
+              checks: { redis, postgres, queue: counts !== null },
               queue: counts,
             },
           },
@@ -54,7 +55,14 @@ export function startHealthServer() {
       }
 
       return json(
-        { error: { code: "NOT_FOUND", message: "Not found", details: null } },
+        {
+          error: {
+            code: "NOT_FOUND",
+            message: "Not found",
+            details: null,
+            requestId: request.headers.get("x-request-id") ?? randomUUID(),
+          },
+        },
         404,
       );
     },

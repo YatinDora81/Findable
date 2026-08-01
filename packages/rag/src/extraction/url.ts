@@ -8,6 +8,13 @@ import { AppError } from "@repo/contracts";
 
 const MAX_REDIRECTS = 5;
 
+const TRANSIENT_DNS_CODES = new Set([
+  "EAI_AGAIN",
+  "ESERVFAIL",
+  "ETIMEOUT",
+  "ECONNREFUSED",
+]);
+
 const REDIRECT_CODES = new Set([301, 302, 303, 307, 308]);
 
 const BLOCKED_RANGES = [
@@ -96,7 +103,23 @@ async function assertPublicHost(hostname: string): Promise<void> {
     return;
   }
 
-  const resolved = await dns.lookup(hostname, { all: true }).catch(() => []);
+  const resolved = await dns
+    .lookup(hostname, { all: true })
+    .catch((error: unknown) => {
+      const code =
+        typeof error === "object" && error !== null && "code" in error
+          ? String((error as { code: unknown }).code)
+          : "";
+
+      if (TRANSIENT_DNS_CODES.has(code)) {
+        throw new AppError(
+          "UPSTREAM_TIMEOUT",
+          "That host could not be looked up just now, try again",
+        );
+      }
+
+      return [];
+    });
 
   if (resolved.length === 0) {
     throw new AppError("BLOCKED_HOST", "That host could not be resolved");

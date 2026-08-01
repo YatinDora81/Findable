@@ -20,6 +20,27 @@ const RESPONSE_SCHEMA = {
   required: ["answer", "usedSources", "hasAnswer"],
 };
 
+const MAX_CONTEXT_CHARS = 60_000;
+const MAX_HIT_CHARS = 8_000;
+
+function buildContext(hits: Hit[]): string {
+  const parts: string[] = [];
+  let budget = MAX_CONTEXT_CHARS;
+
+  for (const [index, hit] of hits.entries()) {
+    if (budget <= 0) break;
+
+    const room = Math.min(MAX_HIT_CHARS, budget);
+    const body =
+      hit.text.length > room ? `${hit.text.slice(0, room)}…` : hit.text;
+
+    parts.push(`[${index + 1}]\n${body}`);
+    budget -= body.length;
+  }
+
+  return parts.join("\n\n");
+}
+
 export type Answer = {
   answer: string;
   hasAnswer: boolean;
@@ -31,9 +52,7 @@ export type Answer = {
 };
 
 export async function answer(question: string, hits: Hit[]): Promise<Answer> {
-  const context = hits
-    .map((hit, index) => `[${index + 1}]\n${hit.text}`)
-    .join("\n\n");
+  const context = buildContext(hits);
 
   const response = await callGemini("generating an answer", (client) =>
     client.models.generateContent({

@@ -19,10 +19,10 @@ COPY packages/typescript-config/package.json packages/typescript-config/
 RUN bun install --frozen-lockfile
 
 FROM base AS source
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app ./
 COPY . .
 RUN cd packages/db \
-  && DATABASE_URL="postgresql://placeholder" bunx prisma generate
+  && DATABASE_URL="postgresql://placeholder" bun --bun run prisma generate
 
 FROM source AS api
 ENV NODE_ENV=production

@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: findable-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: findable
+      POSTGRES_PASSWORD: findable
+      POSTGRES_DB: findable
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U findable -d findable"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     container_name: findable-redis
@@ -50,9 +68,13 @@ services:
     restart: "no"
     env_file: .env
     environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://findable:findable@postgres:5432/findable}
       REDIS_URL: redis://redis:6379
       QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ""
     depends_on:
+      postgres:
+        condition: service_healthy
       qdrant:
         condition: service_healthy
     working_dir: /app
@@ -72,12 +94,16 @@ services:
     env_file: .env
     environment:
       PORT: 4000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://findable:findable@postgres:5432/findable}
       REDIS_URL: redis://redis:6379
       QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ""
       WEB_ORIGIN: http://localhost:3000
     ports:
       - "4000:4000"
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       qdrant:
@@ -100,12 +126,16 @@ services:
     env_file: .env
     environment:
       WORKER_PORT: 4001
+      DATABASE_URL: ${DATABASE_URL:-postgresql://findable:findable@postgres:5432/findable}
       REDIS_URL: redis://redis:6379
       QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ""
       WEB_ORIGIN: http://localhost:3000
     ports:
       - "4001:4001"
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       qdrant:
@@ -138,5 +168,6 @@ services:
         condition: service_healthy
 
 volumes:
+  pgdata:
   redisdata:
   qdrantdata:

@@ -32,6 +32,21 @@ packages/
 
 ## Setup
 
+### With Docker
+
+Everything, one command. Postgres, Redis and Qdrant all run locally, so the only thing you have to supply is a Gemini key.
+
+```bash
+cp .env.example .env          # fill in GEMINI_API_KEYS, the rest already works
+docker compose up
+```
+
+That brings up postgres, redis and qdrant, waits for all three to pass a real healthcheck, runs migrations + seed + the Qdrant collection bootstrap once, then starts the api on :4000, the worker on :4001 and the web app on :3000.
+
+Set `DATABASE_URL`, `QDRANT_URL` or `REDIS_URL` in `.env` and compose uses the hosted service instead of the local container.
+
+### Without Docker
+
 ```bash
 cp .env.example .env          # fill in DATABASE_URL, QDRANT_URL, QDRANT_API_KEY, GEMINI_API_KEYS
 docker compose up -d          # local redis + qdrant, skip if you use hosted ones

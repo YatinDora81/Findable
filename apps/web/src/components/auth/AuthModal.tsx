@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { useGuestSession, useLogin } from "../../hooks/useAccount";
+import { useGuestSession, useLogin, useRegister } from "../../hooks/useAccount";
 import { CloseIcon, UserIcon } from "../icons";
 import { Button } from "../ui/Button";
 import { Field } from "../ui/Field";
@@ -26,7 +26,8 @@ export function AuthModal({ open, onClose }: Props) {
 
   const guest = useGuestSession();
   const login = useLogin();
-  const pending = guest.isPending || login.isPending;
+  const signup = useRegister();
+  const pending = guest.isPending || login.isPending || signup.isPending;
   const isSignup = mode === "signup";
 
   useEffect(() => {
@@ -75,7 +76,10 @@ export function AuthModal({ open, onClose }: Props) {
     if (pending) return;
 
     if (isSignup) {
-      guest.mutate(undefined, { onSuccess: () => onClose() });
+      signup.mutate(
+        { email, password, ...(name.trim() ? { name: name.trim() } : {}) },
+        { onSuccess: () => onClose() },
+      );
       return;
     }
 

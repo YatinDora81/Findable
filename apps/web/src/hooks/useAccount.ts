@@ -37,6 +37,25 @@ export function useGuestSession() {
   });
 }
 
+export function useRegister() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: { email: string; password: string; name?: string }) =>
+      api.register(body),
+    onSuccess: (session) => {
+      writeToken(session.token);
+      client.invalidateQueries();
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof ApiError && error.code === "EMAIL_TAKEN"
+          ? "That email already has an inbox, sign in instead"
+          : error.message,
+      ),
+  });
+}
+
 export function useLogin() {
   const client = useQueryClient();
 

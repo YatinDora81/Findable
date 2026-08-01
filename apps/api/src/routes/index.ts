@@ -5,6 +5,7 @@ import {
   login,
   logout,
   me,
+  register,
 } from "../controllers/auth.controller.ts";
 import { health, ready } from "../controllers/health.controller.ts";
 import { listMessages, query } from "../controllers/query.controller.ts";
@@ -36,6 +37,7 @@ routes.get("/health", health);
 routes.get("/health/ready", ready);
 
 routes.post("/auth/guest", guestLimit, createGuest);
+routes.post("/auth/register", loginLimit, register);
 routes.post("/auth/login", loginLimit, login);
 routes.get("/auth/me", authenticate, me);
 routes.post("/auth/logout", authenticate, logout);

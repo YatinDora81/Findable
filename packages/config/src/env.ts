@@ -35,7 +35,27 @@ const schema = z.object({
 
   PORT: z.coerce.number().int().positive().default(4000),
   WORKER_PORT: z.coerce.number().int().positive().optional(),
-  WEB_ORIGIN: z.url().default("http://localhost:3000"),
+  WEB_ORIGIN: z
+    .string()
+    .default("http://localhost:3000")
+    .transform((value, ctx) => {
+      const origins = value
+        .split(",")
+        .map((entry) => entry.trim().replace(/\/+$/, ""))
+        .filter((entry) => entry.length > 0);
+
+      for (const origin of origins) {
+        if (!/^https?:\/\/[^/]+$/i.test(origin)) {
+          ctx.addIssue({
+            code: "custom",
+            message: `"${origin}" is not a bare http(s) origin`,
+          });
+          return z.NEVER;
+        }
+      }
+
+      return origins;
+    }),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   NODE_ENV: z
     .enum(["development", "test", "production"])

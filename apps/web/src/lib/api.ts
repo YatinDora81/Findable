@@ -7,8 +7,12 @@ import type {
   Source,
 } from "./types";
 
-const BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+function resolveBase(raw: string | undefined): string {
+  const value = (raw ?? "http://localhost:4000/api/v1").replace(/\/+$/, "");
+  return /\/api\/v\d+$/.test(value) ? value : `${value}/api/v1`;
+}
+
+const BASE = resolveBase(process.env.NEXT_PUBLIC_API_URL);
 
 const TOKEN_KEY = "findable.token";
 
@@ -72,6 +76,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
+
+  register: (body: { email: string; password: string; name?: string }) =>
+    request<{ token: string; expiresAt: string; upgradedGuest: boolean }>(
+      "/auth/register",
+      { method: "POST", body: JSON.stringify(body) },
+    ),
 
   me: () => request<Account>("/auth/me"),
 

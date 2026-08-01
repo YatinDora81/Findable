@@ -8,16 +8,18 @@ const log = createLogger("worker-health");
 
 const workerPort = env.WORKER_PORT ?? env.PORT;
 
-const CORS = {
-  "Access-Control-Allow-Origin": env.WEB_ORIGIN,
+const corsFor = (origin: string | null) => ({
+  "Access-Control-Allow-Origin":
+    origin && env.WEB_ORIGIN.includes(origin) ? origin : (env.WEB_ORIGIN[0] ?? "*"),
+  "Vary": "Origin",
   "Access-Control-Allow-Headers": "content-type",
   "Access-Control-Allow-Methods": "GET,OPTIONS",
-};
+});
 
-const json = (body: unknown, status = 200) =>
+const json = (body: unknown, status: number, origin: string | null) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json", ...CORS },
+    headers: { "content-type": "application/json", ...corsFor(origin) },
   });
 
 export function startHealthServer() {
@@ -26,13 +28,14 @@ export function startHealthServer() {
 
     async fetch(request) {
       const { pathname } = new URL(request.url);
+      const origin = request.headers.get("origin");
 
       if (request.method === "OPTIONS") {
-        return new Response(null, { status: 204, headers: CORS });
+        return new Response(null, { status: 204, headers: corsFor(origin) });
       }
 
       if (pathname === "/health") {
-        return json({ data: { status: "ok", uptime: process.uptime() } });
+        return json({ data: { status: "ok", uptime: process.uptime() } }, 200, origin);
       }
 
       if (pathname === "/health/ready") {
@@ -53,6 +56,7 @@ export function startHealthServer() {
             },
           },
           healthy ? 200 : 503,
+          origin,
         );
       }
 
@@ -66,6 +70,7 @@ export function startHealthServer() {
           },
         },
         404,
+        origin,
       );
     },
   });

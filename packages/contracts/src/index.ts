@@ -14,6 +14,7 @@ export {
   listSourcesSchema,
   loginSchema,
   querySchema,
+  registerSchema,
   sourceIdSchema,
   type CreateSourceInput,
   type IndexStatus,

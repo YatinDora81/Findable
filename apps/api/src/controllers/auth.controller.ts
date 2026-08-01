@@ -1,7 +1,14 @@
 import type { Request, Response } from "express";
-import { AppError, loginSchema } from "@repo/contracts";
+import { AppError, loginSchema, registerSchema } from "@repo/contracts";
 import { db } from "@repo/db";
-import { createGuestUser, createSession, verifyPassword } from "../lib/auth.ts";
+import {
+  createGuestUser,
+  createSession,
+  readBearerToken,
+  registerUser,
+  resolveSession,
+  verifyPassword,
+} from "../lib/auth.ts";
 
 export async function createGuest(req: Request, res: Response): Promise<void> {
   const guest = await createGuestUser();
@@ -19,6 +26,31 @@ export async function createGuest(req: Request, res: Response): Promise<void> {
         name: guest.name,
         isGuest: true,
       },
+    },
+  });
+}
+
+export async function register(req: Request, res: Response): Promise<void> {
+  const { email, password, name } = registerSchema.parse(req.body);
+
+  const token = readBearerToken(req.headers.authorization);
+  const existing = token ? await resolveSession(token) : null;
+  const upgrading = existing?.user.isGuest === true;
+
+  const created = await registerUser({
+    email,
+    password,
+    name,
+    ...(upgrading ? { upgradeUserId: existing.userId } : {}),
+  });
+
+  req.log.info({ userId: created.userId, upgraded: upgrading }, "auth.register");
+
+  res.status(201).json({
+    data: {
+      token: created.token,
+      expiresAt: created.expiresAt,
+      upgradedGuest: upgrading,
     },
   });
 }

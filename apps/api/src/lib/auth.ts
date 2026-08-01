@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
+import { AppError } from "@repo/contracts";
 import { db } from "@repo/db";
 
 const SESSION_TTL_DAYS = 30;
@@ -54,6 +55,56 @@ export async function createGuestUser(): Promise<GuestCredentials> {
   return { userId: user.id, email, name, password, token, expiresAt };
 }
 
+export async function registerUser(input: {
+  email: string;
+  password: string;
+  name?: string;
+  upgradeUserId?: string;
+}): Promise<{ userId: string; token: string; expiresAt: Date }> {
+  const email = input.email.trim().toLowerCase();
+  const passwordHash = await Bun.password.hash(input.password);
+
+  const taken = await db.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+
+  if (taken && taken.id !== input.upgradeUserId) {
+    throw new AppError("EMAIL_TAKEN", "That email is already registered");
+  }
+
+  const guest = input.upgradeUserId
+    ? await db.user.findUnique({
+        where: { id: input.upgradeUserId },
+        select: { id: true, isGuest: true },
+      })
+    : null;
+
+  const user =
+    guest?.isGuest === true
+      ? await db.user.update({
+          where: { id: guest.id },
+          data: {
+            email,
+            passwordHash,
+            isGuest: false,
+            ...(input.name ? { name: input.name } : {}),
+          },
+        })
+      : await db.user.create({
+          data: {
+            email,
+            passwordHash,
+            isGuest: false,
+            name: input.name ?? email.split("@")[0] ?? null,
+          },
+        });
+
+  const session = await createSession(user.id);
+
+  return { userId: user.id, ...session };
+}
+
 export async function createSession(
   userId: string,
 ): Promise<{ token: string; expiresAt: Date }> {
@@ -87,7 +138,9 @@ export async function verifyPassword(
   email: string,
   password: string,
 ): Promise<string | null> {
-  const user = await db.user.findUnique({ where: { email } });
+  const user = await db.user.findUnique({
+    where: { email: email.trim().toLowerCase() },
+  });
 
   if (!user?.passwordHash) return null;
 

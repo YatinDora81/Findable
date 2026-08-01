@@ -12,7 +12,18 @@ export function createServer(): Express {
 
   app.disable("x-powered-by");
   app.use(helmet());
-  app.use(cors({ origin: env.WEB_ORIGIN, exposedHeaders: ["X-Request-Id"] }));
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (!origin || env.WEB_ORIGIN.includes(origin)) {
+          callback(null, true);
+          return;
+        }
+        callback(null, false);
+      },
+      exposedHeaders: ["X-Request-Id"],
+    }),
+  );
   app.use(context);
   app.use(accessLog);
 

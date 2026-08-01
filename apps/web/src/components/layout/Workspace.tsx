@@ -68,7 +68,10 @@ export function Workspace() {
           busy={reindex.isPending || remove.isPending}
         />
       ) : (
-        <StartPane loading={sources.isLoading || accountLoading} />
+        <StartPane
+          loading={sources.isLoading || accountLoading}
+          onCreated={setActiveId}
+        />
       )}
     </AppShell>
   );

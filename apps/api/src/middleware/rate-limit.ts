@@ -10,7 +10,7 @@ export function rateLimit(options: {
 }): RequestHandler {
   const buckets = new Map<string, Bucket>();
 
-  return (req, _res, next) => {
+  return (req, res, next) => {
     const now = Date.now();
     const key = req.ip ?? "unknown";
 
@@ -19,16 +19,23 @@ export function rateLimit(options: {
     }
 
     const existing = buckets.get(key);
+    const bucket =
+      existing && existing.resetAt > now
+        ? existing
+        : { count: 0, resetAt: now + options.windowMs };
 
-    if (!existing || existing.resetAt <= now) {
-      buckets.set(key, { count: 1, resetAt: now + options.windowMs });
-      next();
-      return;
-    }
+    bucket.count += 1;
+    buckets.set(key, bucket);
 
-    existing.count += 1;
+    const remaining = Math.max(0, options.max - bucket.count);
+    const resetSeconds = Math.ceil((bucket.resetAt - now) / 1000);
 
-    if (existing.count > options.max) {
+    res.setHeader("RateLimit-Limit", options.max);
+    res.setHeader("RateLimit-Remaining", remaining);
+    res.setHeader("RateLimit-Reset", resetSeconds);
+
+    if (bucket.count > options.max) {
+      res.setHeader("Retry-After", resetSeconds);
       next(new AppError("RATE_LIMITED", options.message));
       return;
     }

@@ -40,7 +40,7 @@ routes.post("/auth/login", loginLimit, login);
 routes.get("/auth/me", authenticate, me);
 routes.post("/auth/logout", authenticate, logout);
 
-routes.use(authenticate);
+routes.use(["/sources", "/ingest", "/items", "/query"], authenticate);
 
 routes.post("/sources", createSource);
 routes.get("/sources", listSources);

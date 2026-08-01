@@ -58,6 +58,7 @@ export async function createSource(req: Request, res: Response): Promise<void> {
       contentHash,
       indexStatus: "PENDING",
     },
+    select: SOURCE_SUMMARY,
   });
 
   let outcome: string;
@@ -87,6 +88,22 @@ export async function createSource(req: Request, res: Response): Promise<void> {
   res.status(202).json({ data: source });
 }
 
+async function anchorFor(cursor: string, userId: string) {
+  const anchor = await db.source.findFirst({
+    where: { id: cursor, userId },
+    select: { id: true, createdAt: true },
+  });
+
+  if (!anchor) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "That page cursor no longer exists, start again from the first page",
+    );
+  }
+
+  return anchor;
+}
+
 async function markUnqueued(id: string): Promise<void> {
   await db.source
     .update({
@@ -103,12 +120,24 @@ async function markUnqueued(id: string): Promise<void> {
 export async function listSources(req: Request, res: Response): Promise<void> {
   const { status, cursor, limit } = listSourcesSchema.parse(req.query);
 
+  const after = cursor ? await anchorFor(cursor, req.userId) : null;
+
   const sources = await db.source.findMany({
-    where: { userId: req.userId, ...(status ? { indexStatus: status } : {}) },
+    where: {
+      userId: req.userId,
+      ...(status ? { indexStatus: status } : {}),
+      ...(after
+        ? {
+            OR: [
+              { createdAt: { lt: after.createdAt } },
+              { createdAt: after.createdAt, id: { lt: after.id } },
+            ],
+          }
+        : {}),
+    },
     select: SOURCE_SUMMARY,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
   });
 
   const hasMore = sources.length > limit;

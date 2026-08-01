@@ -16,6 +16,7 @@ import {
 } from "@repo/rag";
 
 const MIN_EXTRACTED_CHARS = 200;
+const PROSE_GUARD_MIN_CHARS = 2000;
 
 const log = createLogger("ingest");
 
@@ -46,6 +47,7 @@ export async function processIngest(
         : { title: source.title, markdown: source.rawText, meta: {} };
 
     if (source.kind === "LINK") assertReadable(doc.markdown);
+    else assertNotJunk(doc.markdown);
 
     const chunks = chunk(doc.markdown);
 
@@ -143,6 +145,17 @@ export async function processIngest(
     }
 
     throw error;
+  }
+}
+
+function assertNotJunk(markdown: string): void {
+  if (markdown.length <= PROSE_GUARD_MIN_CHARS) return;
+
+  if (!looksLikeProse(markdown)) {
+    throw new AppError(
+      "UNSUPPORTED_CONTENT",
+      "That note is large but does not read like text, so it was not indexed",
+    );
   }
 }
 

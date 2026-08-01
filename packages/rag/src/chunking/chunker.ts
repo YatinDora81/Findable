@@ -127,52 +127,56 @@ function toUnits(text: string, base: number, max: number): Unit[] {
   return units;
 }
 
+const charCeiling = (maxTokens: number) => maxTokens * 4;
+
 function explode(text: string, offset: number, max: number): Unit[] {
-  const tokens = tok(text);
-  if (tokens <= max) return [{ text, offset, tokens }];
+  if (text.length <= charCeiling(max)) {
+    const tokens = tok(text);
+    if (tokens <= max) return [{ text, offset, tokens }];
+  }
 
-  const parts = /[.!?。！？；]/.test(text)
-    ? splitSentences(text)
-    : hardSplit(text, max);
+  const sentences = splitSentences(text);
 
-  if (parts.length === 1) {
+  if (sentences.length > 1) {
     let cursor = offset;
-    return hardSplit(text, max).map((part) => {
-      const unit = { text: part, offset: cursor, tokens: tok(part) };
+    return sentences.flatMap((part) => {
+      const units = explode(part.trim(), cursor, max);
       cursor += part.length;
-      return unit;
+      return units;
     });
   }
 
   let cursor = offset;
-  return parts.flatMap((part) => {
-    const units = explode(part.trim(), cursor, max);
-    cursor += part.length + 1;
-    return units;
+  return hardSplit(text, max).map((part) => {
+    const unit = { text: part, offset: cursor, tokens: tok(part) };
+    cursor += part.length;
+    return unit;
   });
 }
 
+const SENTENCE_END = "[.!?\u3002\uff01\uff1f\uff1b\u0964\u0965\u06d4\u061f\u0589\u1362\u10fb\u0df4]";
+
 const splitSentences = (text: string): string[] =>
-  text.split(/(?<=[.!?。！？；])\s*/).filter((part) => part.length > 0);
+  text
+    .split(new RegExp(`(?<=${SENTENCE_END})\\s*`))
+    .filter((part) => part.length > 0);
 
 function hardSplit(text: string, maxTokens: number): string[] {
   const out: string[] = [];
-  let rest = text;
+  const ceiling = charCeiling(maxTokens);
+  let index = 0;
 
-  while (rest.length > 0) {
-    if (tok(rest) <= maxTokens) {
-      out.push(rest);
-      break;
+  while (index < text.length) {
+    let size = Math.min(ceiling, text.length - index);
+    let piece = text.slice(index, index + size);
+
+    while (size > 1 && tok(piece) > maxTokens) {
+      size = Math.max(1, Math.floor(size / 2));
+      piece = text.slice(index, index + size);
     }
 
-    let size = Math.max(1, Math.floor((rest.length * maxTokens) / tok(rest)));
-
-    while (size > 1 && tok(rest.slice(0, size)) > maxTokens) {
-      size = Math.floor(size * 0.8);
-    }
-
-    out.push(rest.slice(0, size));
-    rest = rest.slice(size);
+    out.push(piece);
+    index += size;
   }
 
   return out.length > 0 ? out : [text];
@@ -250,16 +254,18 @@ export function looksLikeProse(text: string): boolean {
   const sample = text.slice(0, 2000);
   if (sample.length === 0) return false;
 
-  const letters = (sample.match(/\p{L}/gu) ?? []).length;
+  const letters = (sample.match(/[\p{L}\p{M}]/gu) ?? []).length;
   if (letters / sample.length < 0.5) return false;
 
   const unspaced = (sample.match(UNSPACED_SCRIPTS) ?? []).length;
 
   if (unspaced / sample.length > 0.2) {
-    return (sample.match(/[。！？、，．]/g) ?? []).length >= 3 || unspaced > 200;
+    return (sample.match(/[\u3002\uff01\uff1f\u3001\uff0c\uff0e]/g) ?? []).length >= 3 || unspaced > 200;
   }
 
-  const sentenceEnds = (sample.match(/[.!?]\s/g) ?? []).length;
+  const sentenceEnds = (
+    sample.match(new RegExp(`${SENTENCE_END}(\\s|$)`, "g")) ?? []
+  ).length;
   const spaceRatio = (sample.match(/\s/g) ?? []).length / sample.length;
 
   return sentenceEnds >= 3 && spaceRatio > 0.08;

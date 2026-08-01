@@ -6,6 +6,8 @@ import { ingestJobCounts, pingRedis } from "@repo/queue";
 
 const log = createLogger("worker-health");
 
+const workerPort = env.WORKER_PORT ?? env.PORT;
+
 const CORS = {
   "Access-Control-Allow-Origin": env.WEB_ORIGIN,
   "Access-Control-Allow-Headers": "content-type",
@@ -20,7 +22,7 @@ const json = (body: unknown, status = 200) =>
 
 export function startHealthServer() {
   const server = Bun.serve({
-    port: env.WORKER_PORT,
+    port: workerPort,
 
     async fetch(request) {
       const { pathname } = new URL(request.url);
@@ -68,7 +70,7 @@ export function startHealthServer() {
     },
   });
 
-  log.info({ port: env.WORKER_PORT }, "worker.health.listening");
+  log.info({ port: workerPort }, "worker.health.listening");
 
   return server;
 }

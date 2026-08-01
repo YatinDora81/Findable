@@ -1,7 +1,5 @@
-FROM oven/bun:1.3.7-alpine AS base
+FROM oven/bun:1.3.7-alpine AS deps
 WORKDIR /app
-
-FROM base AS deps
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
 COPY apps/worker/package.json apps/worker/
@@ -18,34 +16,11 @@ COPY packages/eslint-config/package.json packages/eslint-config/
 COPY packages/typescript-config/package.json packages/typescript-config/
 RUN bun install --frozen-lockfile
 
-FROM base AS source
+FROM oven/bun:1.3.7-alpine AS runner
+WORKDIR /app
 COPY --from=deps /app ./
 COPY . .
 RUN cd packages/db \
   && DATABASE_URL="postgresql://placeholder" bun --bun run prisma generate
 
-FROM source AS api
-ENV NODE_ENV=production
-WORKDIR /app/apps/api
-EXPOSE 4000
-CMD ["bun", "src/index.ts"]
-
-FROM source AS worker
-ENV NODE_ENV=production
-WORKDIR /app/apps/worker
-EXPOSE 4001
-CMD ["bun", "src/index.ts"]
-
-FROM source AS web-build
-ARG NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1
-ARG NEXT_PUBLIC_WORKER_URL=http://localhost:4001
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_WORKER_URL=$NEXT_PUBLIC_WORKER_URL
-ENV NEXT_TELEMETRY_DISABLED=1
-RUN cd apps/web && bun run build
-
-FROM web-build AS web
-ENV NODE_ENV=production
-WORKDIR /app/apps/web
-EXPOSE 3000
-CMD ["bun", "run", "start"]
+CMD ["sh", "-c", "cd /app/packages/db && bunx prisma migrate deploy && bun prisma/seed.ts && cd /app/packages/rag && bun scripts/init-collection.ts"]

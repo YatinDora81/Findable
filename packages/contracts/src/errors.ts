@@ -4,6 +4,7 @@ export const ErrorCode = {
   NOT_FOUND: { status: 404, retryable: false },
   FORBIDDEN: { status: 403, retryable: false },
   DUPLICATE_SOURCE: { status: 409, retryable: false },
+  EMAIL_TAKEN: { status: 409, retryable: false },
   CONTENT_TOO_LARGE: { status: 413, retryable: false },
   UNSUPPORTED_TYPE: { status: 415, retryable: false },
   EXTRACTION_EMPTY: { status: 422, retryable: false },

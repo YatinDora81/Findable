@@ -49,6 +49,12 @@ export const loginSchema = z.object({
   password: z.string().min(8).max(200),
 });
 
+export const registerSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  email: z.email(),
+  password: z.string().min(8).max(200),
+});
+
 export type CreateSourceInput = z.infer<typeof createSourceSchema>;
 export type ListSourcesInput = z.infer<typeof listSourcesSchema>;
 export type QueryInput = z.infer<typeof querySchema>;

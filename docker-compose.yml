@@ -63,7 +63,7 @@ services:
   migrate:
     build:
       context: .
-      target: source
+      dockerfile: docker/migrate.Dockerfile
     container_name: findable-migrate
     restart: "no"
     env_file: .env
@@ -72,23 +72,17 @@ services:
       REDIS_URL: redis://redis:6379
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ""
+      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:-${DATABASE_URL:-postgresql://findable:findable@postgres:5432/findable}}
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
         condition: service_healthy
-    working_dir: /app
-    command:
-      - sh
-      - -c
-      - >-
-        cd packages/db && bunx prisma migrate deploy && bun prisma/seed.ts
-        && cd /app/packages/rag && bun scripts/init-collection.ts
 
   api:
     build:
       context: .
-      target: api
+      dockerfile: docker/api.Dockerfile
     container_name: findable-api
     restart: unless-stopped
     env_file: .env
@@ -120,7 +114,7 @@ services:
   worker:
     build:
       context: .
-      target: worker
+      dockerfile: docker/worker.Dockerfile
     container_name: findable-worker
     restart: unless-stopped
     env_file: .env
@@ -152,7 +146,7 @@ services:
   web:
     build:
       context: .
-      target: web
+      dockerfile: docker/web.Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
         NEXT_PUBLIC_WORKER_URL: http://localhost:4001

@@ -5,6 +5,11 @@ import { toast } from "sonner";
 import { api, ApiError, clearToken, readToken, writeToken } from "../lib/api";
 import { qk } from "../lib/query-keys";
 
+function switchSession(token: string): void {
+  writeToken(token);
+  window.location.assign("/");
+}
+
 export function useAccount() {
   return useQuery({
     queryKey: qk.account,
@@ -38,15 +43,10 @@ export function useGuestSession() {
 }
 
 export function useRegister() {
-  const client = useQueryClient();
-
   return useMutation({
     mutationFn: (body: { email: string; password: string; name?: string }) =>
       api.register(body),
-    onSuccess: (session) => {
-      writeToken(session.token);
-      client.invalidateQueries();
-    },
+    onSuccess: (session) => switchSession(session.token),
     onError: (error) =>
       toast.error(
         error instanceof ApiError && error.code === "EMAIL_TAKEN"
@@ -57,15 +57,10 @@ export function useRegister() {
 }
 
 export function useLogin() {
-  const client = useQueryClient();
-
   return useMutation({
     mutationFn: ({ email, password }: { email: string; password: string }) =>
       api.login(email, password),
-    onSuccess: (session) => {
-      writeToken(session.token);
-      client.invalidateQueries();
-    },
+    onSuccess: (session) => switchSession(session.token),
     onError: (error) =>
       toast.error(
         error instanceof ApiError && error.status === 403
@@ -79,11 +74,19 @@ export function useLogout() {
   const client = useQueryClient();
 
   return useMutation({
-    mutationFn: api.logout,
-    onSettled: () => {
+    mutationFn: async () => {
+      await api.logout().catch(() => {});
       clearToken();
       client.clear();
-      client.invalidateQueries();
+
+      const guest = await api.guest();
+      return guest.token;
+    },
+    onSuccess: (token) => switchSession(token),
+    onError: () => {
+      clearToken();
+      client.clear();
+      window.location.assign("/");
     },
   });
 }

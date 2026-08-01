@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccount, useGuestSession } from "../../hooks/useAccount";
 import { useAsk, useMessages } from "../../hooks/useMessages";
 import {
@@ -33,7 +33,15 @@ export function Workspace() {
   }, [needsGuest, startGuest]);
 
   const sources = useSources(signedIn);
-  const list = sources.data ?? [];
+  const list = signedIn ? (sources.data ?? []) : [];
+
+  const accountId = account?.id ?? null;
+  const seenAccount = useRef(accountId);
+
+  if (seenAccount.current !== accountId) {
+    seenAccount.current = accountId;
+    if (activeId !== null) setActiveId(null);
+  }
 
   useEffect(() => {
     if (activeId && list.some((source) => source.id === activeId)) return;
